@@ -1,3 +1,10 @@
+Metadata-Version: 2.4
+Name: git-agent
+Version: 0.1.0
+Summary: CLI assistant to push a local project to GitHub
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
 # git-agent
 
 CLI assistant that walks through (or auto-runs) the Git steps needed to push the **current directory** to GitHub: `git init`, `git add .`, first commit on `main`, `origin`, and `git push -u origin main`.

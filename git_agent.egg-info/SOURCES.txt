@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+git_agent/__init__.py
+git_agent/__main__.py
+git_agent/cli.py
+git_agent/git_ops.py
+git_agent/github.py
+git_agent.egg-info/PKG-INFO
+git_agent.egg-info/SOURCES.txt
+git_agent.egg-info/dependency_links.txt
+git_agent.egg-info/entry_points.txt
+git_agent.egg-info/top_level.txt
