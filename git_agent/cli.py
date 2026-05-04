@@ -42,7 +42,15 @@ def format_git_argv(argv: list[str]) -> str:
     return "git " + " ".join(shlex.quote(a) for a in argv)
 
 
-def run_git_step(title: str, argv: list[str], auto: bool, verbose: bool) -> bool:
+def run_git_step(title: str, argv: list[str], auto: bool, verbose: bool) -> tuple[bool, bool]:
+    """
+    Run one git invocation with optional confirmation.
+
+    Returns (continue_workflow, command_succeeded). If the user declines the step
+    or chooses not to continue after an error, continue_workflow is False.
+    command_succeeded is False when git exited non-zero (even if the user chose
+    to continue the workflow).
+    """
     print()
     print("=" * 72)
     print(title)
@@ -51,7 +59,7 @@ def run_git_step(title: str, argv: list[str], auto: bool, verbose: bool) -> bool
 
     if not ask_yes_no("Run this command?", default="y", auto=auto):
         print("Stopped: this step was declined.")
-        return False
+        return False, False
 
     code, stdout, stderr = run_git(argv)
     if stdout:
@@ -63,11 +71,11 @@ def run_git_step(title: str, argv: list[str], auto: bool, verbose: bool) -> bool
         print(f"Error: command failed (exit code {code}).", file=sys.stderr)
         print(f"Suggested fix: {suggest_error_fix(stderr)}", file=sys.stderr)
         if not ask_yes_no("Continue with the remaining steps anyway?", default="n", auto=False):
-            return False
-    else:
-        print("Success.")
+            return False, False
+        return True, False
 
-    return True
+    print("Success.")
+    return True, True
 
 
 def ensure_origin_remote(auto: bool, verbose: bool) -> bool:
@@ -94,7 +102,8 @@ def ensure_origin_remote(auto: bool, verbose: bool) -> bool:
             argv = ["remote", "add", "origin", url]
             label = "Add origin remote"
 
-        if not run_git_step(label, argv, auto, verbose):
+        proceed, _ = run_git_step(label, argv, auto, verbose)
+        if not proceed:
             continue
 
         if has_remote_origin():
@@ -114,14 +123,16 @@ def cmd_push(args: argparse.Namespace) -> int:
     print("-" * 72)
 
     if not is_git_repo():
-        if not run_git_step("Initialize Git repository", ["init"], auto, verbose):
+        proceed, _ok = run_git_step("Initialize Git repository", ["init"], auto, verbose)
+        if not proceed:
             return 1
         if not is_git_repo():
             print("Still not a Git repository after git init.", file=sys.stderr)
             return 1
 
     if git_status_porcelain():
-        if not run_git_step("Stage all changes", ["add", "."], auto, verbose):
+        proceed, _ok = run_git_step("Stage all changes", ["add", "."], auto, verbose)
+        if not proceed:
             return 1
 
     need_commit = (not has_commits()) or bool(git_status_porcelain()) or has_staged_changes()
@@ -130,24 +141,35 @@ def cmd_push(args: argparse.Namespace) -> int:
             commit_argv = ["commit", "--allow-empty", "-m", "Initial commit"]
         else:
             commit_argv = ["commit", "-m", "Initial commit"]
-        if not run_git_step("Create commit", commit_argv, auto, verbose):
+        proceed, _ok = run_git_step("Create commit", commit_argv, auto, verbose)
+        if not proceed:
             return 1
 
     branch = get_current_branch()
     if branch != "main":
-        if not run_git_step("Rename branch to main", ["branch", "-M", "main"], auto, verbose):
+        proceed, _ok = run_git_step("Rename branch to main", ["branch", "-M", "main"], auto, verbose)
+        if not proceed:
             return 1
 
     if not ensure_origin_remote(auto, verbose):
         return 1
 
-    if not run_git_step("Push to GitHub", ["push", "-u", "origin", "main"], auto, verbose):
+    proceed, pushed = run_git_step("Push to GitHub", ["push", "-u", "origin", "main"], auto, verbose)
+    if not proceed:
         return 1
 
     print()
     print("=" * 72)
-    print("Done. Your project is pushed to GitHub (branch main, upstream set).")
-    return 0
+    if pushed:
+        print("Done. Your project is pushed to GitHub (branch main, upstream set).")
+        return 0
+
+    print(
+        "Push did not complete successfully. Fix the problem (see below), then run "
+        "`git push -u origin main` again.",
+        file=sys.stderr,
+    )
+    return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
