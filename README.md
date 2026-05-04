@@ -1,12 +1,12 @@
 # git-agent
 
-CLI assistant that walks through (or auto-runs) the Git steps needed to push the **current directory** to GitHub: `git init`, `git add .`, first commit on `main`, `origin`, and `git push -u origin main`.
+CLI assistant that walks through (or auto-runs) the Git steps needed to push the **current directory** to GitHub: `git init`, `git add .`, first commit on `main`, **`git remote add origin <your-repo-url>`**, and `git push -u origin main`.
 
 ## Requirements
 
 - Python 3.10+
 - Git on `PATH`
-- Optional: `GITHUB_TOKEN` in the environment to create a new repository on your account (never stored by this tool)
+- An empty GitHub repository you created in the browser (the tool asks you to paste its clone URL)
 
 ## Install
 
@@ -16,32 +16,30 @@ From this directory:
 pip install -e .
 ```
 
-That installs the `git-agent` command.
+That installs the `git-agent` command (or use `python -m git_agent` if Scripts is not on your PATH).
 
 ## Usage
 
 ```bash
 cd /path/to/your/project
 git-agent push              # confirm each Git command
-git-agent push -y           # auto mode (no prompts)
-git-agent push -y --private # create a private repo when using GITHUB_TOKEN
+git-agent push -y           # skip confirmations for Git steps (you still paste the repo URL)
 git-agent push -v           # extra diagnostics on stderr
 python -m git_agent push    # same without installing scripts
 ```
 
-### GitHub repository creation
+Flow:
 
-1. If `GITHUB_TOKEN` is set and valid, the tool calls the GitHub API to create a repository whose **default name** is the **current folder name** (sanitized for GitHub), then runs `git remote add origin` / `git remote set-url origin` with the HTTPS clone URL.
-2. If the token is missing or API creation fails, you are prompted to **paste a repository URL** (HTTPS or SSH).
-
-Create a fine-grained or classic token with **`repo`** scope. Do not commit the token; use your shell or CI secrets only.
+1. On GitHub, create a **new empty repository** (no README/license if you want a clean first push from this tool—GitHub’s hints explain this).
+2. Run `git-agent push`.
+3. When prompted, **paste** the HTTPS or SSH clone URL (e.g. `https://github.com/you/repo.git`).
+4. Complete any confirmations; Git handles sign-in for `git push` (browser, credential manager, or SSH).
 
 ## Security
 
-- No tokens are hardcoded or written to disk by this project.
-- The token is read only from `GITHUB_TOKEN` at runtime.
-- Command output is shown as Git returns it; avoid sharing logs that might include URLs with embedded credentials.
+- No API tokens are used by this tool.
+- Do not paste passwords into the terminal; use normal Git/GitHub authentication for `git push`.
 
 ## Legacy script
 
-`python github_push_agent.py` forwards to the same flow as `git-agent push` (extra arguments are passed through).
+`python github_push_agent.py` forwards to the same flow as `git-agent push`.

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import os
 import shlex
 import sys
 from pathlib import Path
@@ -17,7 +16,6 @@ from git_agent.git_ops import (
     run_git,
     suggest_error_fix,
 )
-from git_agent.github import create_user_repository, get_login, slugify_repo_name
 
 
 def log(verbose: bool, msg: str) -> None:
@@ -72,69 +70,19 @@ def run_git_step(title: str, argv: list[str], auto: bool, verbose: bool) -> bool
     return True
 
 
-def ensure_origin_remote(auto: bool, verbose: bool, private: bool) -> bool:
+def ensure_origin_remote(auto: bool, verbose: bool) -> bool:
+    """Configure `origin` using a repository URL pasted by the user (HTTPS or SSH)."""
     if has_remote_origin():
         log(verbose, "[git-agent] origin remote already present.")
         print("\nUsing existing `origin` remote.")
         return True
 
-    token = os.environ.get("GITHUB_TOKEN", "").strip()
-    default_name = slugify_repo_name(Path.cwd().name)
-
-    if token:
-        ok, login_msg = get_login(token)
-        if not ok:
-            print(
-                f"GITHUB_TOKEN is set but GitHub API check failed: {login_msg}",
-                file=sys.stderr,
-            )
-            print("Unset or fix the token, or add the remote manually when prompted.", file=sys.stderr)
-            token = ""
-        else:
-            log(verbose, "[git-agent] GitHub token accepted by API.")
-
-    repo_name = default_name
-    if token:
-        if not auto:
-            entered = input(f"GitHub repository name [{default_name}]: ").strip()
-            if entered:
-                repo_name = slugify_repo_name(entered)
-
-        kind = "private" if private else "public"
-        if not ask_yes_no(
-            f"Create a {kind} GitHub repository named '{repo_name}' and set it as origin?",
-            default="y",
-            auto=auto,
-        ):
-            token = ""
-
-    if token:
-        ok, msg, clone_url = create_user_repository(token, repo_name, private=private)
-        if ok and clone_url:
-            print(f"\nRepository ready: {msg}")
-            if has_remote_origin():
-                title = "Point origin to the new GitHub repository"
-                argv = ["remote", "set-url", "origin", clone_url]
-            else:
-                title = "Add Git remote origin"
-                argv = ["remote", "add", "origin", clone_url]
-            if not run_git_step(title, argv, auto, verbose):
-                return False
-            if has_remote_origin():
-                _, url, _ = run_git(["remote", "get-url", "origin"])
-                if url:
-                    log(verbose, f"[git-agent] origin -> {url}")
-                return True
-            print(
-                "origin is still not configured. Paste a repository URL below.",
-                file=sys.stderr,
-            )
-        else:
-            print(f"GitHub API could not create the repository: {msg}", file=sys.stderr)
-            print("You can paste a repository URL next.", file=sys.stderr)
+    print("\nCreate an empty repository on GitHub (github.com → New repository), then paste its URL below.")
 
     while True:
-        url = input("\nPaste GitHub repository URL (HTTPS or SSH). Leave empty to cancel:\n> ").strip()
+        url = input(
+            "\nPaste repository clone URL (HTTPS or SSH). Leave empty to cancel:\n> "
+        ).strip()
         if not url:
             print("Cancelled: no origin remote configured.", file=sys.stderr)
             return False
@@ -150,6 +98,9 @@ def ensure_origin_remote(auto: bool, verbose: bool, private: bool) -> bool:
             continue
 
         if has_remote_origin():
+            _, configured, _ = run_git(["remote", "get-url", "origin"])
+            if configured:
+                log(verbose, f"[git-agent] origin -> {configured}")
             return True
 
         print("origin is still missing. Try another URL.", file=sys.stderr)
@@ -158,7 +109,6 @@ def ensure_origin_remote(auto: bool, verbose: bool, private: bool) -> bool:
 def cmd_push(args: argparse.Namespace) -> int:
     auto = bool(args.yes)
     verbose = bool(args.verbose)
-    private = bool(args.private)
 
     print("git-agent push")
     print("-" * 72)
@@ -188,7 +138,7 @@ def cmd_push(args: argparse.Namespace) -> int:
         if not run_git_step("Rename branch to main", ["branch", "-M", "main"], auto, verbose):
             return 1
 
-    if not ensure_origin_remote(auto, verbose, private):
+    if not ensure_origin_remote(auto, verbose):
         return 1
 
     if not run_git_step("Push to GitHub", ["push", "-u", "origin", "main"], auto, verbose):
@@ -212,23 +162,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    push_p = sub.add_parser("push", help="Initialize, commit, set origin, and push to GitHub.")
+    push_p = sub.add_parser("push", help="Initialize, commit, set origin from URL, and push.")
     push_p.add_argument(
         "-y",
         "--yes",
         action="store_true",
-        help="Auto mode: run all steps without confirmation prompts.",
+        help="Auto mode: run Git commands without confirmation (you still paste the repo URL).",
     )
     push_p.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Print extra diagnostics to stderr.",
-    )
-    push_p.add_argument(
-        "--private",
-        action="store_true",
-        help="When creating a repo via GITHUB_TOKEN, make it private.",
     )
     push_p.set_defaults(func=cmd_push)
 
