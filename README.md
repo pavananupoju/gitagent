@@ -1,4 +1,4 @@
-# git-agent
+# git-agent  CLI
 
 CLI assistant that walks through (or auto-runs) the Git steps needed to push the **current directory** to GitHub: `git init`, `git add .`, first commit on `main`, **`git remote add origin <your-repo-url>`**, and `git push -u origin main`.
 
